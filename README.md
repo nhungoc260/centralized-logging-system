@@ -318,3 +318,5 @@ docker-compose up -d --scale worker=5
 - ✅ **Telegram alerts** – Bot API integration
 - ✅ **Horizontal scaling** – workers scale independently
 - ✅ **Admin Panel** – quản lý user, xóa logs, queue stats, alert config
+
+> Built with by **Nguyễn Trần Như Ngọc** 🐨 – 2026
