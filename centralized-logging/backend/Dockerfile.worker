@@ -1,0 +1,28 @@
+# Worker Dockerfile - runs BullMQ log consumer
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Production
+FROM node:20-alpine AS production
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+COPY --from=builder /app/dist ./dist
+
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+USER nodejs
+
+# Worker entrypoint (not the API server)
+CMD ["node", "dist/workers/logWorker.js"]

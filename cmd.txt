@@ -1,0 +1,22 @@
+4 Terminal cần chạy
+Terminal 1 - Backend:
+cd "D:\Bai Tap\centralized-logging-system\centralized-logging\backend"
+npm run dev
+
+Terminal 2 - Frontend:
+cd "D:\Bai Tap\centralized-logging-system\centralized-logging\frontend"
+npm start
+
+Terminal 3 - Simulator (chờ Terminal 1 chạy xong):
+cd "D:\Bai Tap\centralized-logging-system\centralized-logging\backend"
+$body = '{"email":"admin@example.com","password":"admin123"}'
+$response = Invoke-WebRequest -Uri "http://localhost:3001/api/auth/login" -Method POST -ContentType "application/json" -Body $body -UseBasicParsing
+$json = $response.Content | ConvertFrom-Json
+$env:SIMULATOR_TOKEN = $json.data.token
+npx ts-node src/utils/simulator.ts
+
+---
+
+**Lưu ý trước khi chạy:**
+- Mở **Docker Desktop** trước (để Redis + MongoDB chạy)
+- Thứ tự: Docker → Terminal 1 → Terminal 2 → Terminal 3 → Terminal 4

@@ -1,0 +1,15 @@
+# Development Dockerfile for frontend (Create React App dev server)
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY . .
+
+EXPOSE 3000
+
+ENV CI=true
+
+CMD ["npm", "start"]

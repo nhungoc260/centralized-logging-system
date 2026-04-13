@@ -1,0 +1,145 @@
+version: '3.9'
+
+services:
+  # ============================================================
+  # MongoDB - Primary database
+  # ============================================================
+  mongo:
+    image: mongo:7.0
+    container_name: logging-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: centralized-logging
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - logging-net
+
+  # ============================================================
+  # Redis - Queue + Alert sliding window
+  # ============================================================
+  redis:
+    image: redis:7.2-alpine
+    container_name: logging-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --save 60 1
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - logging-net
+
+  # ============================================================
+  # Backend API + Socket.io server
+  # ============================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: production
+    container_name: logging-backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      MONGODB_URI: mongodb://mongo:27017/centralized-logging
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - logging-net
+
+  # ============================================================
+  # Log Worker - BullMQ consumer (can scale horizontally)
+  # ============================================================
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: logging-worker
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      MONGODB_URI: mongodb://mongo:27017/centralized-logging
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - logging-net
+    # Scale workers: docker-compose up --scale worker=3
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # ============================================================
+  # Frontend - React + Nginx
+  # ============================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    container_name: logging-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_SOCKET_URL: http://localhost:3001
+    networks:
+      - logging-net
+
+# ============================================================
+# Volumes
+# ============================================================
+volumes:
+  mongo_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# ============================================================
+# Networks
+# ============================================================
+networks:
+  logging-net:
+    driver: bridge
